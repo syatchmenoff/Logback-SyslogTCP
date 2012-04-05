@@ -1,0 +1,23 @@
+<project name="Janrain Logback Syslog TCP Appender" default="jar" basedir=".">
+  <property name="src" location="src"/>
+  <property name="build" location="build"/>
+  <property name="dist"  location="dist"/>
+	
+  <path id="classpath">
+    <!-- in case we are running in dev env -->
+    <fileset dir="lib">
+    </fileset>
+  </path>
+
+
+  <target name="jar">
+    <mkdir dir="build"/>
+    <mkdir dir="build/classes"/>
+    <javac srcdir="./src" destdir="build/classes" debug="on">
+      <classpath refid="classpath" />
+    </javac>
+
+    <jar jarfile="build/logback-syslog-tcp.jar" basedir="build/classes/" />
+  </target>
+</project>
+
