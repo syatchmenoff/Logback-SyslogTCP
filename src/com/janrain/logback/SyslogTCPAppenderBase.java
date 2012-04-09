@@ -63,6 +63,7 @@ public abstract class SyslogTCPAppenderBase<E> extends AppenderBase<E> {
       errorCount++;
     } catch (SocketException e) {
       addWarn("Failed to connect to syslog server. Will try to reconnect later.", e);
+      fireConnector();
     }
 
     if (layout == null) {
@@ -316,6 +317,8 @@ public abstract class SyslogTCPAppenderBase<E> extends AppenderBase<E> {
           addInfo("Could not connect to " + syslogHost
               + ". Exception is " + e);
         }
+        // if we get here, we failed to connect. we'll give up on the queued events
+        eventQueue = new ArrayList<E>();
       }
     }
   }

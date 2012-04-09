@@ -13,7 +13,7 @@ class LogbackTest {
                 logger.debug(message);
             }
         } catch(Exception e) {
-            System.out.println("Caught exception: " + e);
+            System.out.println("Logback test caught exception: " + e);
         }
     }
 }
