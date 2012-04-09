@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
 
 import ch.qos.logback.core.AppenderBase;
 import ch.qos.logback.core.CoreConstants;
@@ -36,6 +37,7 @@ public abstract class SyslogTCPAppenderBase<E> extends AppenderBase<E> {
   final static String SYSLOG_LAYOUT_URL = CoreConstants.CODES_URL
       + "#syslog_layout";
   final static int MSG_SIZE_LIMIT = 256 * 1024;
+  final static int DEFAULT_RECONNECTION_DELAY = 30000;
 
   Layout<E> layout;
   String facilityStr;
@@ -43,7 +45,10 @@ public abstract class SyslogTCPAppenderBase<E> extends AppenderBase<E> {
   protected String suffixPattern;
   SyslogTCPOutputStream sos;
   int port = SyslogConstants.SYSLOG_PORT;
-
+  int reconnectionDelay = DEFAULT_RECONNECTION_DELAY;
+  private Connector connector;
+  ArrayList<E> eventQueue;
+ 
   public void start() {
     int errorCount = 0;
     if (facilityStr == null) {
@@ -74,25 +79,47 @@ public abstract class SyslogTCPAppenderBase<E> extends AppenderBase<E> {
   abstract public int getSeverityForEvent(Object eventObject);
 
   @Override
-  protected void append(E eventObject) {
+  protected void append(E newEvent) {
     if (!isStarted()) {
       return;
     }
 
-    try {
-      String msg = layout.doLayout(eventObject);
-      if(msg == null) {
-        return;
-      }
-      if (msg.length() > MSG_SIZE_LIMIT) {
-        msg = msg.substring(0, MSG_SIZE_LIMIT);
-      }
-      sos.write(msg.getBytes());
-      sos.flush();
-      postProcess(eventObject, sos);
-    } catch (IOException ioe) {
-      addError("Failed to send diagram to " + syslogHost, ioe);
+    if(eventQueue == null) {
+      eventQueue = new ArrayList<E>();
     }
+    if(newEvent != null) {
+      eventQueue.add(newEvent);
+    }
+
+    if(connector == null) { 
+      while(eventQueue.isEmpty() == false) {
+        try {
+          E event = eventQueue.get(0);
+          
+          String msg = layout.doLayout(event);
+          if(msg == null) {
+            return;
+          }
+          if (msg.length() > MSG_SIZE_LIMIT) {
+            msg = msg.substring(0, MSG_SIZE_LIMIT);
+          }
+          sos.write(msg.getBytes());
+          sos.flush();
+          postProcess(event, sos);
+
+          eventQueue.remove(0);
+        } catch (IOException e) {
+          if(sos != null) {
+            sos.close();
+          }
+          sos = null;
+          addWarn("Detected problem with connection: " + e);
+          if(reconnectionDelay > 0) {
+            fireConnector();
+          }
+        }
+      }
+    } 
   }
 
   protected void postProcess(Object event, OutputStream sw) {
@@ -169,6 +196,15 @@ public abstract class SyslogTCPAppenderBase<E> extends AppenderBase<E> {
     this.syslogHost = syslogHost;
   }
 
+
+  public int getReconnectionDelay() {
+    return reconnectionDelay;
+  }
+
+  public void setReconnectionDelay(int reconnectionDelay) {
+    this.reconnectionDelay = reconnectionDelay;
+  }
+
   /**
    * Returns the string value of the <b>Facility</b> option.
    * 
@@ -243,5 +279,44 @@ public abstract class SyslogTCPAppenderBase<E> extends AppenderBase<E> {
    */
   public void setSuffixPattern(String suffixPattern) {
     this.suffixPattern = suffixPattern;
+  }
+
+  void fireConnector() {
+    if (connector == null) {
+      addInfo("Starting a new connector thread.");
+      connector = new Connector();
+      connector.setDaemon(true);
+      connector.setPriority(Thread.MIN_PRIORITY);
+      connector.start();
+    }
+  }
+
+  class Connector extends Thread {
+
+    boolean interrupted = false;
+
+    public void run() {
+      while (!interrupted) {
+        try {
+          sleep(reconnectionDelay);
+          addInfo("Attempting connection to " + syslogHost);
+          synchronized (this) {
+            sos = new SyslogTCPOutputStream(syslogHost, port);
+            connector = null;
+            addInfo("Connection established. Exiting connector thread.");
+            break;
+          }
+        } catch (InterruptedException e) {
+          addInfo("Connector interrupted. Leaving loop.");
+          return;
+        } catch (java.net.ConnectException e) {
+          addInfo("Remote host " + syslogHost
+              + " refused connection.");
+        } catch (IOException e) {
+          addInfo("Could not connect to " + syslogHost
+              + ". Exception is " + e);
+        }
+      }
+    }
   }
 }

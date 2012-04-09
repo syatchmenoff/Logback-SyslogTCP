@@ -69,9 +69,14 @@ public class SyslogTCPOutputStream extends OutputStream {
       return;
     }
     if(this.sock != null) {
-      OutputStream outputStream = sock.getOutputStream();
-      outputStream.write(bytes);
-      outputStream.write('\n');
+      try {
+        OutputStream outputStream = sock.getOutputStream();
+        outputStream.write(bytes);
+        outputStream.write('\n');
+      } catch(SocketException e) {
+        System.out.println("Caught exception: " + e);
+        throw new IOException(e);
+      }
     }
   }
 

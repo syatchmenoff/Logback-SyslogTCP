@@ -2,6 +2,7 @@
   <appender name="SYSLOG" class="com.janrain.logback.SyslogTCPAppender">
     <syslogHost>localhost</syslogHost>
     <port>5140</port>
+    <reconnectionDelay>5000</reconnectionDelay>
     <facility>AUTH</facility>
     <suffixPattern>[%thread] %logger %msg</suffixPattern>
   </appender> 
